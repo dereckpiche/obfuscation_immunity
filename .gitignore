@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+outputs/
+wandb/
+*.out
+*.pt
+.DS_Store
+.local/
+runs/
+data/

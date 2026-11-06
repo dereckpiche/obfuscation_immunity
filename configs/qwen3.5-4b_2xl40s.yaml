@@ -1,0 +1,3 @@
+# Qwen3.5-4B on two L40S-48GB, a whole replica on each.
+model: Qwen/Qwen3.5-4B
+gpus: 2

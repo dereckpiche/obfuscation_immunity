@@ -1,0 +1,59 @@
+[project]
+name = "obfuscation-immunity"
+version = "0.1.0"
+description = "A judge immune to obfuscation pressure: RL judges of honest-vs-sneaky answer pairs, on verl, in the style of Stable Baselines3."
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    "verl==0.9.1",
+    "torch==2.11.0",
+    "transformers==5.9.0",
+    "datasets>=3",
+    "pyarrow>=19",
+    "wandb",
+    "cachetools>=7.2.0",
+    "uvicorn>=0.54.0",
+    "fastapi>=0.136.3",
+    "reasoning-gym>=0.1.25",
+]
+
+[project.optional-dependencies]
+cuda = [
+    "verl[vllm]==0.9.1; sys_platform == 'linux'",
+    "flash-linear-attention==0.5.2; sys_platform == 'linux'",
+    "flash-attn; sys_platform == 'linux'",
+    "torchao; sys_platform == 'linux'",
+]
+
+[dependency-groups]
+dev = [
+    "black>=26.5.1",
+    "pytest>=8.2",
+]
+
+[tool.uv]
+package = false
+override-dependencies = ["transformers==5.9.0", "numpy>=2.0.0", "kernels>=0.12.0,<0.13"]
+
+[tool.uv.sources]
+flash-attn = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu13torch2.10cxx11abiTRUE-cp312-cp312-linux_x86_64.whl", marker = "sys_platform == 'linux'" }
+torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]
+torchaudio = [{ index = "pytorch-cu130", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.black]
+line-length = 80
+target-version = ["py312"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
