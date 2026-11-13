@@ -16,6 +16,7 @@ else
   ln -sf libcudart.so.13 "$CUDA_HOME/lib/libcudart.so"
 fi
 ulimit -u 65536 2>/dev/null || true  # Ray starts many processes
+unset ROCR_VISIBLE_DEVICES  # set on DRAC nodes; verl refuses it beside CUDA_VISIBLE_DEVICES
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True RAY_worker_register_timeout_seconds=300
 echo "$(hostname)  $(nvidia-smi -L | wc -l)x $(nvidia-smi -L | head -1 | cut -d'(' -f1)  commit $GIT_COMMIT"
 srun uv run "$@"
