@@ -1,0 +1,11 @@
+# @package _global_
+# K2-Horizon-3.7B on two L40S-48GB, a whole replica on each.
+defaults:
+  - /family/k2-horizon@_global_
+
+actor_rollout_ref:
+  model:
+    path: IFM/K2-Horizon-3.7B
+
+trainer:
+  n_gpus_per_node: 2

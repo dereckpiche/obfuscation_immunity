@@ -1,0 +1,20 @@
+# @package _global_
+# K2-Horizon's chat at low reasoning effort: thinking opened by the template
+# with <ifm|think_faster>, closed by </ifm|think_faster>, the reply right
+# after it, a turn ended by <|ifm|im_end|>, not its end-of-text token
+# (common.chat_format). Its own model code (trust_remote_code); vLLM runs it
+# through its Transformers backend. Sampling as its card recommends.
+chat:
+  think_close: </ifm|think_faster>
+  separator: ""
+  end_of_turn: <|ifm|im_end|>
+
+data:
+  apply_chat_template_kwargs:
+    reasoning_effort: low
+
+actor_rollout_ref:
+  model:
+    trust_remote_code: true
+  rollout:
+    top_p: 0.95

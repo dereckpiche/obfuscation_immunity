@@ -1,0 +1,11 @@
+# @package _global_
+# Qwen3.5-4B on one H100-80GB (rorqual).
+defaults:
+  - /family/qwen3.5@_global_
+
+actor_rollout_ref:
+  model:
+    path: Qwen/Qwen3.5-4B
+
+trainer:
+  n_gpus_per_node: 1

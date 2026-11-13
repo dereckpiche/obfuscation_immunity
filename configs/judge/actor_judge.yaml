@@ -1,0 +1,4 @@
+# @package _global_
+# The actor as its own judge, read from the run's vLLM (JudgeConfig).
+judge:
+  _target_: obfuscation_immunity.ActorJudge

@@ -1,0 +1,158 @@
+# The recipe every run trains with: Qwen3.5 with LoRA, GRPO, vLLM
+# rollouts on the training GPUs, one pair per trajectory, sized for one L40S
+# per replica (the actor whole on each, nothing sharded or offloaded).
+# Every setting that matters is written here, even where it equals verl's
+# default; the rest keeps verl's default `ppo_trainer`. Pick a judge and a
+# setup (a model on some GPUs); any key is a command-line override:
+#
+#   python -m obfuscation_immunity judge=stacked_judge \
+#     setup=qwen3.5-4b_2xl40s judge.freeze_at=50
+
+hydra:
+  searchpath:
+    - pkg://verl.trainer.config
+  run:
+    dir: runs/${trainer.experiment_name}/hydra
+
+defaults:
+  - ppo_trainer
+  - _self_
+  - judge: stacked_judge
+  - setup: qwen3.5-4b_2xl40s
+
+puzzle:
+  name: zebra_puzzles             # reasoning-gym's
+  settings:                       # 3 people × 3 traits, not its 4 × 4: easier
+    num_people: 3
+    num_characteristics: 3
+  files: zebra_puzzles_3x3        # data/<files>/train.parquet, written on first use
+
+data:
+  train_files: ${hydra:runtime.cwd}/data/${puzzle.files}/train.parquet
+  val_files: ${data.train_files}  # never run: every pair is a fresh puzzle
+  train_batch_size: 8             # puzzles per step; each gets rollout.n pairs
+  shuffle: true
+  max_prompt_length: 1024
+  # Two answers of (4864 − 256) / 2 = 2304 tokens each, one try each, and
+  # the request between them (common.loop). The judge's turn takes 2304 too.
+  max_response_length: 4864
+  return_raw_chat: true           # the loop gets chat messages, not a string
+  # how the model is asked to think: the setup's (apply_chat_template_kwargs)
+  filter_overlong_prompts: true
+  truncation: error
+  dataloader_num_workers: 0
+
+algorithm:
+  adv_estimator: grpo
+  # The reward is continuous (the judge's log-loss): dividing by a group's
+  # spread would scale the noise of a group whose rewards nearly agree to
+  # full size.
+  norm_adv_by_std_in_grpo: false
+  use_kl_in_reward: false         # the KL is in the actor's loss
+  # vLLM and the trainer compute slightly different probabilities. Token
+  # weights π_trainer / π_vllm are capped at 2, and a pair whose mean
+  # log-ratio leaves ±0.01 is dropped.
+  rollout_correction:
+    rollout_is: token
+    rollout_is_threshold: 2.0
+    rollout_rs: seq_mean_k1
+    rollout_rs_threshold: "0.99_1.01"
+
+actor_rollout_ref:
+  model:
+    path: ???                     # the setup's
+    use_remove_padding: true
+    enable_gradient_checkpointing: true
+    override_config:
+      attn_implementation: flash_attention_2
+    lora_rank: 256
+    lora_alpha: 512               # twice the rank
+    target_modules: all-linear
+    lora:
+      merge: false                # vLLM applies the adapter itself
+
+  # Strictly on-policy: one optimizer step per rollout batch. With LoRA the
+  # KL reference is the actor with its adapter switched off.
+  actor:
+    strategy: fsdp2
+    optim:
+      optimizer: AdamW
+      lr: 3.0e-6
+      betas: [0.9, 0.999]
+      weight_decay: 0.0
+      clip_grad: 1.0
+      lr_warmup_steps: -1         # no warmup
+      lr_scheduler_type: constant
+    ppo_mini_batch_size: ${data.train_batch_size}
+    ppo_epochs: 1
+    clip_ratio: 0.2
+    policy_loss:
+      loss_mode: vanilla
+    loss_agg_mode: seq-mean-token-mean   # every pair weighs the same
+    use_dynamic_bsz: true
+    # the longest turn, a judge's: what vLLM may write
+    ppo_max_token_len_per_gpu: ${actor_rollout_ref.rollout.max_model_len}
+    use_kl_loss: true
+    kl_loss_coef: 1.0e-4
+    kl_loss_type: low_var_kl
+    entropy_coeff: 0
+    entropy_from_logits_with_chunking: true
+    fsdp_config:
+      fsdp_size: 1                # a whole replica per GPU
+      param_offload: false
+      optimizer_offload: false
+      # verl would cast the adapter to a bf16 base's dtype, where small
+      # updates round away.
+      model_dtype: fp32
+    checkpoint:
+      save_lora_only: true
+
+  rollout:
+    name: vllm
+    mode: async
+    # vLLM loads the base from the snapshot itself, so verl only ever pushes
+    # the adapters, not the whole fp32 base staged in host RAM per worker.
+    load_format: auto
+    tensor_model_parallel_size: 1
+    gpu_memory_utilization: 0.4   # shares the GPU with the actor
+    max_model_len: 8192           # a judge's question (both answers) and its tries
+    max_num_seqs: 32
+    enable_prefix_caching: true
+    temperature: 1.0
+    top_p: 1.0
+    top_k: -1
+    n: 4                          # GRPO's group
+    calculate_log_probs: true     # for the rollout correction
+    logprobs_mode: processed_logprobs
+    checkpoint_engine:
+      update_weights_bucket_megabytes: 512    # adapters only (load_format)
+    log_prob_use_dynamic_bsz: true
+    log_prob_max_token_len_per_gpu: ${actor_rollout_ref.rollout.max_model_len}
+    agent:
+      default_agent_loop: pair    # common.loop.PairLoop
+      agent_loop_config_path: ${hydra:runtime.cwd}/configs/agent_loop.yaml
+      num_workers: 2
+
+reward:
+  num_workers: 1                  # PairLoop scores; each worker is a process
+
+transfer_queue:
+  enable: true                    # verl's v1 trainer
+  backend:
+    SimpleStorage:
+      num_data_storage_units: 2   # each unit is a process
+
+trainer:
+  use_v1: true
+  logger: []                     # common.progress reports instead
+  project_name: obfuscation_immunity
+  experiment_name: ${hydra:runtime.choices.judge}
+  n_gpus_per_node: ???            # the setup's
+  nnodes: 1
+  total_training_steps: 2000
+  val_before_train: false
+  test_freq: -1
+  save_freq: 50
+  default_local_dir: ${hydra:runtime.cwd}/runs/${trainer.experiment_name}
+  resume_mode: auto
+  max_actor_ckpt_to_keep: 1

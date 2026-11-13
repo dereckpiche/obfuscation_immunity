@@ -1,0 +1,9 @@
+# @package _global_
+# The standalone judge, trained on its format alone: its judgement stays the
+# base model's (AdapterJudgeConfig.verified).
+defaults:
+  - standalone_judge
+  - _self_
+
+judge:
+  verified: false

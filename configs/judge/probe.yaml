@@ -1,0 +1,6 @@
+# @package _global_
+# A probe on the starting model's activations (ProbeConfig); python -m
+# obfuscation_immunity.probe.fit writes one.
+judge:
+  _target_: obfuscation_immunity.Probe
+  probe: ${hydra:runtime.cwd}/probe.pt

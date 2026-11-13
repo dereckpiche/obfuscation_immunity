@@ -1,0 +1,2 @@
+- name: pair
+  _target_: obfuscation_immunity.common.loop.PairLoop

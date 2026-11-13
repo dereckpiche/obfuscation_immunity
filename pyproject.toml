@@ -31,8 +31,11 @@ dev = [
     "pytest>=8.2",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [tool.uv]
-package = false
 override-dependencies = ["transformers==5.9.0", "numpy>=2.0.0", "kernels>=0.12.0,<0.13"]
 
 [tool.uv.sources]
@@ -52,8 +55,45 @@ target-version = ["py312"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
 
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
+
+[tool.cluv]
+job_script_path = "scripts/job.sh"
+project_dir = "$SCRATCH/obfuscation_immunity"
+results_path = "$SCRATCH/logs/obfuscation_immunity"
+results_symlink = "logs"
+
+[tool.cluv.env]
+UV_OFFLINE = "1"
+HF_HUB_OFFLINE = "1"
+WANDB_MODE = "online"
+
+[tool.cluv.sbatch_args]
+requeue = true
+
+[tool.cluv.clusters.mila]
+sbatch_args = { partition = "long", gpus = "l40s:2", cpus-per-gpu = 12, mem-per-gpu = "250G" }
+
+[tool.cluv.clusters.killarney]
+sbatch_args = { account = "aip-courvill", gpus = "l40s:2", cpus-per-gpu = 16, mem-per-gpu = "125G" }
+
+[tool.cluv.clusters.fir]
+sbatch_args = { account = "rrg-bengioy-ad", gpus = "h100:1", cpus-per-gpu = 12, mem-per-gpu = "280G" }
+
+[tool.cluv.clusters.rorqual]
+env = { WANDB_MODE = "offline" }
+sbatch_args = { account = "rrg-bengioy-ad", gpus = "h100:1", cpus-per-gpu = 16, mem-per-gpu = "124G" }
+
+[tool.cluv.clusters.nibi]
+sbatch_args = { account = "rrg-bengioy-ad", gpus = "h100:1", cpus-per-gpu = 14, mem-per-gpu = "250G" }
+
+[tool.cluv.clusters.trillium-gpu]
+env = { WANDB_MODE = "offline" }
+sbatch_args = { account = "rrg-bengioy-ad", gpus-per-node = 1 }
+
+[tool.cluv.clusters.tamia]
+env = { WANDB_MODE = "offline" }
+sbatch_args = { account = "aip-courvill", gpus = "h100:4", cpus-per-gpu = 12, mem-per-gpu = "120G" }

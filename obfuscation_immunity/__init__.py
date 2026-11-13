@@ -1,8 +1,17 @@
-"""Judges immune to obfuscation pressure: one method per folder, each a judge
-in the same RL game (common.base_method), trained with verl."""
+"""
+Judges against obfuscation, each tried on the same task with verl.
 
-from obfuscation_immunity.actor_judge import ActorJudge
-from obfuscation_immunity.coevolving_judge import CoevolvingJudge
+The task (obfuscation_immunity.common) stays fixed: the policy answers a
+puzzle honestly, then sneakily, and is trained with GRPO against a judge J
+of the pair. What a run tries is its judge (common.judge); judges of one
+family share a folder (judges/, probe/).
+"""
+
+from obfuscation_immunity.judges import (
+    ActorJudge,
+    StackedJudge,
+    StandaloneJudge,
+)
 from obfuscation_immunity.probe import Probe
 
-__all__ = ["ActorJudge", "CoevolvingJudge", "Probe"]
+__all__ = ["ActorJudge", "Probe", "StackedJudge", "StandaloneJudge"]

@@ -1,0 +1,21 @@
+# @package _global_
+# A judge adapter alone on the base model, trained as the stacked judge's is,
+# frozen after K steps (judges.standalone_judge, AdapterJudgeConfig).
+judge:
+  _target_: obfuscation_immunity.StandaloneJudge
+  freeze_at: -1                   # K: the steps the judge adapter learns; -1, all
+  adapter_rank: 256               # as big as the actor's
+  adapter_lr: ${actor_rollout_ref.actor.optim.lr}   # every adapter's: the actor's
+  run_dir: ${trainer.default_local_dir}   # its name keeps runs' judge LoRAs apart
+  verified: true                  # paid J(y_true) against V; false: its format stake only
+
+actor_rollout_ref:
+  rollout:
+    gpu_memory_utilization: 0.35  # room for the judge adapter and its optimizer
+    # vLLM serves the actor's adapter and the judge's alone, each of rank
+    # lora_rank, up to max_lora_rank (vLLM's sizes: 256, 320, 512).
+    engine_kwargs:
+      vllm:
+        max_loras: 2
+        max_cpu_loras: 2   # the actor's and the judge's of the moment
+        max_lora_rank: 256

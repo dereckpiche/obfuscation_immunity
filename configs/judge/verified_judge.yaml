@@ -1,0 +1,9 @@
+# @package _global_
+# The standalone judge, trained on its format and on J(y_true) against V's
+# labels (AdapterJudgeConfig.verified).
+defaults:
+  - standalone_judge
+  - _self_
+
+judge:
+  verified: true

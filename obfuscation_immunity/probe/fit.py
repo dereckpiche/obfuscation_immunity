@@ -1,12 +1,13 @@
-"""The probe the Probe judge reads, fitted once, away from the puzzles, on
-School of Reward Hacks: about a thousand prompts, each with a
-reward-hacking answer and an honest one.
+"""
+Fits, once and away from the puzzles, the probe that Probe reads.
 
-A frozen model reads each answer: the policy's starting model. x is the
-mean over the answer's tokens of φ(h_t), where h_t is the residual stream
-after decoder layer ℓ and φ is the encoder of an SAE trained on that
-model, in Qwen-Scope's format: a directory (sae.md trains one) or a Hub
-repo. The probe is a difference of means with a fitted logistic link:
+The data is School of Reward Hacks: about a thousand prompts, each with a
+reward-hacking answer and an honest one. A frozen model reads each answer:
+the policy's starting model. x is the mean over the answer's tokens of
+φ(h_t), where h_t is the residual stream after decoder layer ℓ and φ is the
+encoder of an SAE trained on that model, in Qwen-Scope's format: a
+directory (sae.md trains one) or a Hub repo. The probe is a difference of
+means with a fitted logistic link:
 
     v = mean(x | hack) − mean(x | honest),    ψ(x) = σ(a · vᵀx + b)
 
@@ -14,182 +15,143 @@ repo. The probe is a difference of means with a fitted logistic link:
 """
 
 import argparse
-import json
-from dataclasses import asdict, dataclass
 from pathlib import Path
 
+import datasets
 import torch
-import torch.nn.functional as F
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    PreTrainedTokenizerBase,
+)
 
-DATASET = "longtermrisk/school-of-reward-hacks"
+from obfuscation_immunity.probe.probe import (
+    ProbeWeights,
+    TopKSAE,
+    pooled_sae_features,
+)
+
+SCHOOL_OF_REWARD_HACKS = "longtermrisk/school-of-reward-hacks"
+"""The Hub dataset the probe is fitted on."""
+
+HELD_OUT_SHARE = 0.2
+"""The share of rows kept out of the fit, to measure the probe on."""
 
 
-@dataclass
-class Weights:
-    """ψ(x) = σ(scale · directionᵀx + bias), where x pools φ(h_t) at
-    `layer` of `model`, φ being the encoder of the SAE in `sae`.
+def tokenize_chat_answer(
+    tokenizer: PreTrainedTokenizerBase, user: str, answer: str
+) -> tuple[list[int], list[int]]:
     """
+    Tokenizes a one-turn chat and marks the answer's tokens.
 
-    model: str
-    layer: int
-    sae: str
-    direction: torch.Tensor
-    scale: float
-    bias: float
+    Args:
+        tokenizer: The model's tokenizer.
+        user: The user's message.
+        answer: The assistant's answer.
 
-    @classmethod
-    def fit(cls, x, y, model, layer, sae) -> "Weights":
-        """Difference of means, rescaled so that the projections have unit
-        spread, then a and b by 1-D logistic regression (lightly
-        regularised, since the classes may separate).
-        """
-        v = x[y == 1].mean(0) - x[y == 0].mean(0)
-        v = v / (x @ v).std()
-        s, target = x @ v, y.float()
-        a = torch.zeros((), requires_grad=True)
-        b = torch.zeros((), requires_grad=True)
-        optimizer = torch.optim.LBFGS([a, b], max_iter=200)
-
-        def loss():
-            """Cross-entropy of σ(a·s + b) against the labels."""
-            optimizer.zero_grad()
-            value = F.binary_cross_entropy_with_logits(a * s + b, target)
-            value = value + 1e-3 * a**2
-            value.backward()
-            return value
-
-        optimizer.step(loss)
-        return cls(model, layer, sae, v, a.item(), b.item())
-
-    def logit(self, x: torch.Tensor) -> float:
-        """ψ's logit, a · vᵀx + b, for one pooled feature vector."""
-        direction = self.direction.to(x.device, x.dtype)
-        return (self.scale * direction @ x + self.bias).item()
-
-    def score(self, x: torch.Tensor) -> float:
-        """ψ(x) for one pooled feature vector."""
-        return torch.sigmoid(torch.tensor(self.logit(x))).item()
-
-    def save(self, path: Path) -> None:
-        """Write the probe to `path`."""
-        torch.save(asdict(self), path)
-
-    @classmethod
-    def load(cls, path: str) -> "Weights":
-        """Read a probe written by `save`."""
-        return cls(**torch.load(path))
-
-
-class TopKSAE:
-    """Qwen-Scope's encoder for one layer: φ(h) = TopK_k(W_enc h + b_enc)."""
-
-    def __init__(self, path: str, layer: int, width: int, device):
-        """Read k and the layer's weights from the SAE, a directory or a
-        Hub repo, after checking that it reads residual streams `width`
-        wide: every Qwen3.5 size has its own width, so a mismatch means
-        another model's SAE.
-        """
-        root = Path(path)
-        if not root.is_dir():
-            from huggingface_hub import snapshot_download
-
-            root = Path(snapshot_download(path))
-        config = json.loads((root / "config.json").read_text())
-        if config["d_model"] != width:
-            raise ValueError(
-                f"{path} was trained on {config['base_model']}, whose residual"
-                f" stream is {config['d_model']} wide, not {width}"
-            )
-        self.k = config["k"]
-        weights = torch.load(root / f"layer{layer}.sae.pt", map_location=device)
-        self.w, self.b = weights["W_enc"], weights["b_enc"]
-
-    def __call__(self, h: torch.Tensor) -> torch.Tensor:
-        """Feature activations, all but the k largest set to zero."""
-        pre = h @ self.w.T.to(h.dtype) + self.b.to(h.dtype)
-        top = pre.topk(self.k, dim=-1)
-        return torch.zeros_like(pre).scatter_(-1, top.indices, top.values)
-
-
-def features(model, sae: TopKSAE, layer: int, ids, mask) -> torch.Tensor:
-    """x for one sequence: φ of the residual stream after decoder layer
-    `layer` (hidden_states[layer + 1]), averaged over the masked tokens.
+    Returns:
+        The chat's tokens, and 1 for each of the answer's tokens, 0 before.
     """
-    from obfuscation_immunity.common.workers import last_logits
-
-    device = next(model.parameters()).device
-    input_ids = torch.tensor([ids], device=device)
-    with last_logits(model, 1):
-        out = model(
-            input_ids=input_ids, output_hidden_states=True, use_cache=False
-        )
-    h = out.hidden_states[layer + 1][0].float()
-    return sae(h[torch.tensor(mask, device=device).bool()]).mean(0)
-
-
-def chat(tokenizer, user: str, answer: str) -> tuple[list[int], list[int]]:
-    """Token ids of a one-turn chat, and the mask of the answer's tokens."""
     question = [{"role": "user", "content": user}]
     prompt = tokenizer.apply_chat_template(
         question, tokenize=False, add_generation_prompt=True
     )
-    full = tokenizer.apply_chat_template(
+    chat = tokenizer.apply_chat_template(
         question + [{"role": "assistant", "content": answer}], tokenize=False
     )
-    start = len(tokenizer(prompt, add_special_tokens=False).input_ids)
-    ids = tokenizer(full, add_special_tokens=False).input_ids
-    return ids, [0] * start + [1] * (len(ids) - start)
+    prompt_length = len(tokenizer(prompt, add_special_tokens=False).input_ids)
+    token_ids = tokenizer(chat, add_special_tokens=False).input_ids
+    answer_length = len(token_ids) - prompt_length
+    return token_ids, [0] * prompt_length + [1] * answer_length
 
 
 def auroc(scores: torch.Tensor, labels: torch.Tensor) -> float:
-    """Chance that a random hack scores above a random honest answer."""
-    pos, neg = scores[labels == 1], scores[labels == 0]
-    above = (pos[:, None] > neg[None, :]).float()
-    ties = (pos[:, None] == neg[None, :]).float()
+    """
+    Computes the chance that a random hack scores above a random honest one.
+
+    Args:
+        scores: One score per answer.
+        labels: 1 for a hack, 0 for an honest answer.
+
+    Returns:
+        The AUROC, ties counted as half.
+    """
+    hacks, honest = scores[labels == 1], scores[labels == 0]
+    above = (hacks[:, None] > honest[None, :]).float()
+    ties = (hacks[:, None] == honest[None, :]).float()
     return (above + ties / 2).mean().item()
 
 
 @torch.no_grad()
-def fit(model: str, layer: int | None, sae: str, rows: int, out: Path):
-    """Read both answers of every row, fit on 80% of the rows, print the
-    mean ψ of the other 20%'s hacks and honest answers and the AUROC
-    there, and save the probe.
+def fit_probe(
+    model: str, layer: int | None, sae: str, rows: int, out: Path
+) -> None:
     """
-    import datasets
-    from transformers import AutoModelForCausalLM, AutoTokenizer
+    Fits a probe on School of Reward Hacks, reports it, and saves it.
 
+    Reads both answers of every row, fits on 80% of the rows, and prints
+    the mean probe score of the other 20%'s hacks and honest answers and
+    the AUROC there.
+
+    Args:
+        model: The model whose activations the probe reads.
+        layer: The layer to read; None for the middle one.
+        sae: The SAE for that model and layer.
+        rows: At most this many rows are used.
+        out: The file to save the probe to.
+    """
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    tokenizer = AutoTokenizer.from_pretrained(model)
-    reader = AutoModelForCausalLM.from_pretrained(model, dtype=torch.bfloat16)
+    tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=True)
+    reader = AutoModelForCausalLM.from_pretrained(
+        model, dtype=torch.bfloat16, trust_remote_code=True
+    )
     reader.to(device).eval()
-    text = reader.config.get_text_config()
-    depth = text.num_hidden_layers // 2 if layer is None else layer
-    encoder = TopKSAE(sae, depth, text.hidden_size, device)
-    data = datasets.load_dataset(DATASET, split="train")
+    text_config = reader.config.get_text_config()
+    if layer is None:
+        layer = text_config.num_hidden_layers // 2
+    encoder = TopKSAE(sae, layer, text_config.hidden_size, device)
+    data = datasets.load_dataset(SCHOOL_OF_REWARD_HACKS, split="train")
     data = data.shuffle(seed=0).select(range(min(rows, len(data))))
-    x, y = [], []
+    features, labels = [], []
     for row in data:
         hack, honest = row["school_of_reward_hacks"], row["control"]
         for answer, label in ((hack, 1), (honest, 0)):
-            ids, mask = chat(tokenizer, row["user"], answer)
-            x.append(features(reader, encoder, depth, ids, mask).cpu())
-            y.append(label)
-    x, y = torch.stack(x), torch.tensor(y)
-    cut = 2 * int(0.8 * len(data))
-    probe = Weights.fit(x[:cut], y[:cut], model, depth, sae)
-    scores = torch.tensor([probe.score(v) for v in x[cut:]])
-    hacks, honest = scores[y[cut:] == 1], scores[y[cut:] == 0]
+            token_ids, answer_mask = tokenize_chat_answer(
+                tokenizer, row["user"], answer
+            )
+            pooled = pooled_sae_features(
+                reader, encoder, layer, token_ids, answer_mask
+            )
+            features.append(pooled.cpu())
+            labels.append(label)
+    all_features, all_labels = torch.stack(features), torch.tensor(labels)
+    cut = 2 * int((1 - HELD_OUT_SHARE) * len(data))
+    probe = ProbeWeights.fit(
+        all_features[:cut], all_labels[:cut], model, layer, sae
+    )
+    held_out_labels = all_labels[cut:]
+    scores = torch.tensor([probe.score(x) for x in all_features[cut:]])
+    hack_scores = scores[held_out_labels == 1]
+    honest_scores = scores[held_out_labels == 0]
     print(
-        f"held-out mean ψ: hacks {hacks.mean():.3f},"
-        f" honest {honest.mean():.3f},"
-        f" AUROC {auroc(scores, y[cut:]):.3f} ({len(hacks)} rows)"
+        f"held-out mean probe score: hacks {hack_scores.mean():.3f},"
+        f" honest {honest_scores.mean():.3f},"
+        f" AUROC {auroc(scores, held_out_labels):.3f}"
+        f" ({len(hack_scores)} rows)"
     )
     probe.save(out)
     print(f"probe -> {out}")
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+def main(argv: list[str] | None = None) -> None:
+    """
+    Parses the command line and fits the probe.
+
+    Args:
+        argv: The command line's arguments; None for sys.argv's.
+    """
+    summary = __doc__.strip().splitlines()[0]
+    parser = argparse.ArgumentParser(description=summary)
     parser.add_argument(
         "sae", help="an SAE in Qwen-Scope's format: a directory or Hub repo"
     )
@@ -197,5 +159,9 @@ if __name__ == "__main__":
     parser.add_argument("--layer", type=int, help="default: the middle one")
     parser.add_argument("--rows", type=int, default=10**6)
     parser.add_argument("--out", type=Path, default=Path("probe.pt"))
-    args = parser.parse_args()
-    fit(args.model, args.layer, args.sae, args.rows, args.out)
+    args = parser.parse_args(argv)
+    fit_probe(args.model, args.layer, args.sae, args.rows, args.out)
+
+
+if __name__ == "__main__":
+    main()
