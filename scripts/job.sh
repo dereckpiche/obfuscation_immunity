@@ -17,7 +17,11 @@ else
   ln -sf libcudart.so.13 "$CUDA_HOME/lib/libcudart.so"
 fi
 ulimit -u 65536 2>/dev/null || true  # Ray starts many processes
-unset ROCR_VISIBLE_DEVICES  # set on DRAC nodes; verl refuses it beside CUDA_VISIBLE_DEVICES
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True RAY_worker_register_timeout_seconds=300
 echo "$(hostname)  $(nvidia-smi -L | wc -l)x $(nvidia-smi -L | head -1 | cut -d'(' -f1)  commit $GIT_COMMIT"
-srun uv run "$@"
+# The venv cluv synced, used as is: under `uv run`, Ray starts each worker with `uv run` too,
+# and each re-syncs the shared venv while the others import from it.
+export RAY_ENABLE_UV_RUN_RUNTIME_ENV=0
+source .venv/bin/activate
+# srun sets ROCR_VISIBLE_DEVICES in its step on DRAC; verl refuses it beside CUDA_VISIBLE_DEVICES.
+srun env -u ROCR_VISIBLE_DEVICES "$@"
