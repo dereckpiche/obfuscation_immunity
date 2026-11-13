@@ -86,8 +86,8 @@ def test_the_policy_is_told_its_budget_and_an_old_system_turn_dropped():
         {"role": "system", "content": "old"},
         {"role": "user", "content": "puzzle"},
     ]
-    system, user = puzzles.puzzle_messages(prompt, 1792)
-    assert system["role"] == "system" and "1792 tokens" in system["content"]
+    system, user = puzzles.puzzle_messages(prompt, 2048)
+    assert system["role"] == "system" and "2048 tokens" in system["content"]
     assert "nothing before or after it" in system["content"]
     assert user == {"role": "user", "content": "puzzle"}
 

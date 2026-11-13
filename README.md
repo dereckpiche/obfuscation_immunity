@@ -22,7 +22,7 @@ their judge J.
 
 Every turn, the policy's two answers and the judge's, thinks and then
 replies in a strict format, within the same budget, which its prompt states
-(2304 tokens): its thinking, the tag that closes it, the reply, the end of
+(2048 tokens): its thinking, the tag that closes it, the reply, the end of
 its turn, and nothing else, not even a space. An answer replies with only
 `\boxed{…}`, the judge with only the JSON object
 `{"answer": {"A": p, "B": p, "C": p, "D": p}}`, summing to exactly 1. There

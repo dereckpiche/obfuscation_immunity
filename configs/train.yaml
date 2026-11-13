@@ -33,9 +33,9 @@ data:
   train_batch_size: 8             # puzzles per step; each gets rollout.n pairs
   shuffle: true
   max_prompt_length: 1024
-  # Two answers of (4864 − 256) / 2 = 2304 tokens each, one try each, and
-  # the request between them (common.loop). The judge's turn takes 2304 too.
-  max_response_length: 4864
+  # Two answers of (4352 − 256) / 2 = 2048 tokens each, one try each, and
+  # the request between them (common.loop). The judge's turn takes 2048 too.
+  max_response_length: 4352
   return_raw_chat: true           # the loop gets chat messages, not a string
   # how the model is asked to think: its family's (apply_chat_template_kwargs)
   filter_overlong_prompts: true
