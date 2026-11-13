@@ -45,19 +45,19 @@ clipping, the KL loss, the rollout/training mismatch correction, gradient
 clipping).
 
 ```bash
-uv sync --extra cuda
+uv sync
 python -m obfuscation_immunity judge=stacked_judge \
-  setup=qwen3.5-4b_2xl40s judge.freeze_at=50
+  model=qwen3.5-4b judge.freeze_at=50
 ```
 
 The run is verl's PPO trainer on plain verl config: `configs/train.yaml` is
 the recipe, every setting that matters written out even where it equals
 verl's default; `configs/judge/` holds each judge's arguments, checked at the
 start against its typed `Config` dataclass, and what it changes in verl;
-`configs/setup/` holds the setups that work (a model on some GPUs), each
-from a model family in `configs/family/`: its chat markers and how it is
-asked to think. Qwen3.5 (thinking on) and K2-Horizon (`reasoning_effort:
-low`) take the same code. Any key
+`configs/model/` holds the models, each from a model family in
+`configs/family/`: its chat markers and how it is asked to think. Qwen3.5
+(thinking on) and K2-Horizon (`reasoning_effort: low`) take the same code.
+Every GPU of the job trains, as many as Slurm gives it. Any key
 is a command-line override (`trainer.save_freq=20`). A run writes its puzzles
 on first use. `Probe` first needs `python -m obfuscation_immunity.probe.fit
 <sae>`. Each step prints a few lines and logs the same to wandb (project
@@ -79,5 +79,5 @@ uv tool install cluster-uv
 cluv login rorqual                             # your 2FA
 cluv sync rorqual                              # checkout + uv sync on the login node
 cluv run rorqual bash scripts/prefetch.sh      # the models, once
-cluv submit rorqual -- python -m obfuscation_immunity judge=stacked_judge setup=qwen3.5-4b_1xh100
+cluv submit first -- python -m obfuscation_immunity judge=stacked_judge model=qwen3.5-4b   # on whichever cluster starts it first
 ```

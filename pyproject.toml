@@ -15,10 +15,7 @@ dependencies = [
     "uvicorn>=0.54.0",
     "fastapi>=0.136.3",
     "reasoning-gym>=0.1.25",
-]
-
-[project.optional-dependencies]
-cuda = [
+    # the GPU stack, on Linux only, so a plain `uv sync` installs it on the clusters
     "verl[vllm]==0.9.1; sys_platform == 'linux'",
     "flash-linear-attention==0.5.2; sys_platform == 'linux'",
     "flash-attn; sys_platform == 'linux'",

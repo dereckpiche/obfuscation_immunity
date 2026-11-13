@@ -2,7 +2,7 @@
 Trains the policy against one judge: verl's PPO trainer on configs/.
 
     python -m obfuscation_immunity judge=actor_judge \
-        setup=qwen3.5-2b_1xa100 trainer.total_training_steps=2
+        model=qwen3.5-2b trainer.total_training_steps=2
 """
 
 from pathlib import Path
@@ -28,7 +28,7 @@ def main(config: DictConfig) -> None:
     trains.
 
     Args:
-        config: configs/train.yaml with the chosen judge and setup, and
+        config: configs/train.yaml with the chosen judge and model, and
             the command line's overrides.
     """
     OmegaConf.resolve(config)

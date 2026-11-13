@@ -3,10 +3,10 @@
 # per replica (the actor whole on each, nothing sharded or offloaded).
 # Every setting that matters is written here, even where it equals verl's
 # default; the rest keeps verl's default `ppo_trainer`. Pick a judge and a
-# setup (a model on some GPUs); any key is a command-line override:
+# model; every GPU of the job trains; any key is a command-line override:
 #
 #   python -m obfuscation_immunity judge=stacked_judge \
-#     setup=qwen3.5-4b_2xl40s judge.freeze_at=50
+#     model=qwen3.5-4b judge.freeze_at=50
 
 hydra:
   searchpath:
@@ -18,7 +18,7 @@ defaults:
   - ppo_trainer
   - _self_
   - judge: stacked_judge
-  - setup: qwen3.5-4b_2xl40s
+  - model: qwen3.5-4b
 
 puzzle:
   name: zebra_puzzles             # reasoning-gym's
@@ -37,7 +37,7 @@ data:
   # the request between them (common.loop). The judge's turn takes 2304 too.
   max_response_length: 4864
   return_raw_chat: true           # the loop gets chat messages, not a string
-  # how the model is asked to think: the setup's (apply_chat_template_kwargs)
+  # how the model is asked to think: its family's (apply_chat_template_kwargs)
   filter_overlong_prompts: true
   truncation: error
   dataloader_num_workers: 0
@@ -60,7 +60,7 @@ algorithm:
 
 actor_rollout_ref:
   model:
-    path: ???                     # the setup's
+    path: ???                     # the model's
     use_remove_padding: true
     enable_gradient_checkpointing: true
     override_config:
@@ -147,7 +147,9 @@ trainer:
   logger: []                     # common.progress reports instead
   project_name: obfuscation_immunity
   experiment_name: ${hydra:runtime.choices.judge}
-  n_gpus_per_node: ???            # the setup's
+  # every GPU of the job trains: Slurm's count (cluv submits the same
+  # arguments to every cluster), 1 outside Slurm
+  n_gpus_per_node: ${oc.decode:${oc.env:SLURM_GPUS_ON_NODE,1}}
   nnodes: 1
   total_training_steps: 2000
   val_before_train: false

@@ -1,5 +1,5 @@
 # @package _global_
-# Qwen3.5-2B on two L40S-48GB, a whole replica on each.
+# Qwen3.5-2B, a whole replica on each GPU.
 defaults:
   - /family/qwen3.5@_global_
 
@@ -10,6 +10,3 @@ actor_rollout_ref:
     # vLLM and training both fit on the GPU, so vLLM never sleeps: its
     # level-1 sleep (verl's, for LoRA) copies its weights to host RAM.
     free_cache_engine: false
-
-trainer:
-  n_gpus_per_node: 2

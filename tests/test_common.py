@@ -114,9 +114,9 @@ def composed(*overrides):
         ("probe", Probe),
     ],
 )
-@pytest.mark.parametrize("setup", [p.stem for p in CONFIGS.glob("setup/*")])
-def test_every_judge_composes_with_every_setup(judge, cls, setup):
-    config = composed(f"judge={judge}", f"setup={setup}")
+@pytest.mark.parametrize("model", [p.stem for p in CONFIGS.glob("model/*")])
+def test_every_judge_composes_with_every_model(judge, cls, model):
+    config = composed(f"judge={judge}", f"model={model}")
     built = build_judge(config.judge)
     assert type(built) is cls and type(built.config) is cls.Config
     assert set(config.chat) == {"think_close", "separator", "end_of_turn"}

@@ -2078,22 +2078,18 @@ dependencies = [
     { name = "cachetools" },
     { name = "datasets" },
     { name = "fastapi" },
+    { name = "flash-attn", marker = "sys_platform == 'linux'" },
+    { name = "flash-linear-attention", marker = "sys_platform == 'linux'" },
     { name = "pyarrow" },
     { name = "reasoning-gym" },
     { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
     { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux'" },
+    { name = "torchao", marker = "sys_platform == 'linux'" },
     { name = "transformers" },
     { name = "uvicorn" },
     { name = "verl" },
-    { name = "wandb" },
-]
-
-[package.optional-dependencies]
-cuda = [
-    { name = "flash-attn", marker = "sys_platform == 'linux'" },
-    { name = "flash-linear-attention", marker = "sys_platform == 'linux'" },
-    { name = "torchao", marker = "sys_platform == 'linux'" },
     { name = "verl", extra = ["vllm"], marker = "sys_platform == 'linux'" },
+    { name = "wandb" },
 ]
 
 [package.dev-dependencies]
@@ -2107,20 +2103,19 @@ requires-dist = [
     { name = "cachetools", specifier = ">=7.2.0" },
     { name = "datasets", specifier = ">=3" },
     { name = "fastapi", specifier = ">=0.136.3" },
-    { name = "flash-attn", marker = "sys_platform == 'linux' and extra == 'cuda'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu13torch2.10cxx11abiTRUE-cp312-cp312-linux_x86_64.whl" },
-    { name = "flash-linear-attention", marker = "sys_platform == 'linux' and extra == 'cuda'", specifier = "==0.5.2" },
+    { name = "flash-attn", marker = "sys_platform == 'linux'", url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu13torch2.10cxx11abiTRUE-cp312-cp312-linux_x86_64.whl" },
+    { name = "flash-linear-attention", marker = "sys_platform == 'linux'", specifier = "==0.5.2" },
     { name = "pyarrow", specifier = ">=19" },
     { name = "reasoning-gym", specifier = ">=0.1.25" },
     { name = "torch", marker = "sys_platform != 'linux'", specifier = "==2.11.0" },
     { name = "torch", marker = "sys_platform == 'linux'", specifier = "==2.11.0", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "torchao", marker = "sys_platform == 'linux' and extra == 'cuda'" },
+    { name = "torchao", marker = "sys_platform == 'linux'" },
     { name = "transformers", specifier = "==5.9.0" },
     { name = "uvicorn", specifier = ">=0.54.0" },
     { name = "verl", specifier = "==0.9.1" },
-    { name = "verl", extras = ["vllm"], marker = "sys_platform == 'linux' and extra == 'cuda'", specifier = "==0.9.1" },
+    { name = "verl", extras = ["vllm"], marker = "sys_platform == 'linux'", specifier = "==0.9.1" },
     { name = "wandb" },
 ]
-provides-extras = ["cuda"]
 
 [package.metadata.requires-dev]
 dev = [
