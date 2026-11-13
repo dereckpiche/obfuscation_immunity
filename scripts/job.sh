@@ -4,8 +4,9 @@
 
 # FLA (Qwen3.5's linear attention) and FlashInfer compile kernels with nvcc.
 if [ -n "${CC_CLUSTER:-}" ]; then
-  # DRAC: its CUDA module; wandb bypasses the proxy.
-  module load cuda/13.2 httpproxy
+  # DRAC: its CUDA module; the proxy where compute nodes have no internet, which wandb bypasses.
+  module load cuda/13.2
+  module is-avail httpproxy && module load httpproxy
   export NO_PROXY=api.wandb.ai,.wandb.ai,.googleapis.com no_proxy=api.wandb.ai,.wandb.ai,.googleapis.com
 else
   # Mila's CUDA module's nvcc dies with a bus error: use the env's CUDA 13 toolkit, whose nvcc

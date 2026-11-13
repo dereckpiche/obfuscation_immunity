@@ -142,6 +142,12 @@ transfer_queue:
     SimpleStorage:
       num_data_storage_units: 2   # each unit is a process
 
+ray_kwargs:
+  ray_init:
+    # the job's CPUs, not the node's: Ray otherwise prestarts a worker per
+    # node CPU, and ray.init hangs while they register
+    num_cpus: ${oc.decode:${oc.env:SLURM_CPUS_ON_NODE,null}}
+
 trainer:
   use_v1: true
   logger: []                     # common.progress reports instead
