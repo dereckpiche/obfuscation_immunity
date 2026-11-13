@@ -8,6 +8,9 @@
 rsync -a --delete .venv/ "$SLURM_TMPDIR/venv/"
 export VIRTUAL_ENV=$SLURM_TMPDIR/venv RAY_ENABLE_UV_RUN_RUNTIME_ENV=0
 export PATH=$VIRTUAL_ENV/bin:$PATH
+# Compile caches on the node's disk too: workers compiling at once race on network scratch.
+export VLLM_CACHE_ROOT=$SLURM_TMPDIR/vllm TRITON_CACHE_DIR=$SLURM_TMPDIR/triton
+export TORCHINDUCTOR_CACHE_DIR=$SLURM_TMPDIR/inductor FLASHINFER_WORKSPACE_BASE=$SLURM_TMPDIR
 
 # FLA (Qwen3.5's linear attention) and FlashInfer compile kernels with nvcc.
 if [ -n "${CC_CLUSTER:-}" ]; then
