@@ -160,3 +160,23 @@ def build_judge(node: DictConfig) -> Judge:
     config = OmegaConf.to_object(OmegaConf.merge(schema, values))
     assert isinstance(config, judge_class.Config)
     return judge_class(config)
+
+
+def whole_batches(
+    listed: dict[str, dict[str, Any]], batch_multiple: int
+) -> list[str]:
+    """
+    Picks the trajectories of a partition that make whole batches, oldest first.
+
+    Args:
+        listed: The partition's keys and their tags (`global_steps`: the
+            step that generated each).
+        batch_multiple: The batch size verl trains on without padding.
+
+    Returns:
+        The oldest keys, as many as the largest multiple of the batch size
+        there are; none if there is not yet a whole batch.
+    """
+    oldest_first = sorted(listed, key=lambda key: listed[key]["global_steps"])
+    whole = len(oldest_first) // batch_multiple * batch_multiple
+    return oldest_first[:whole]

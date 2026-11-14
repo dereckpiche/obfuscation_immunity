@@ -30,6 +30,7 @@ from obfuscation_immunity.common.judge import (
     Judge,
     JudgeConfig,
     build_judge,
+    whole_batches,
 )
 from obfuscation_immunity.common import loop as loop_module
 from obfuscation_immunity.common.loop import PairLoop
@@ -638,3 +639,15 @@ def test_a_judge_config_is_checked_against_its_type(override, error):
     config = composed("judge=stacked_judge", override)
     with pytest.raises(Exception, match=error):
         build_judge(config.judge)
+
+
+def test_the_judge_trains_on_whole_batches_oldest_first():
+    listed = {
+        f"k{i}": {"global_steps": step}
+        for i, step in enumerate([3, 1, 2, 1, 3, 2, 1])
+    }
+    assert whole_batches(listed, 8) == []
+    assert whole_batches(listed, 3) == ["k1", "k3", "k6", "k2", "k5", "k0"]
+    assert whole_batches(listed, 7) == sorted(
+        listed, key=lambda k: listed[k]["global_steps"]
+    )

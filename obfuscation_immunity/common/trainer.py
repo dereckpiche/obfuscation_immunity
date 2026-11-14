@@ -30,6 +30,7 @@ from obfuscation_immunity.common.judge import (
     JUDGE_PARTITION,
     Judge,
     build_judge,
+    whole_batches,
 )
 from obfuscation_immunity.common.progress import Progress
 from obfuscation_immunity.common.transcript import PairRecord
@@ -230,22 +231,27 @@ class PairTrainer(PPOTrainerSync):
 
         verl's own pipeline: balancing, old and reference log-probs,
         advantages with the rollout correction, then the update; then the
-        trajectories are cleared.
+        trajectories are cleared. It trains on whole batches only, oldest
+        first, and leaves the rest for the next step: verl pads any other
+        size with synthetic samples whose multi-row position ids
+        (Qwen3.5's) break its micro-batching.
 
         Args:
             partition_id: The transfer queue partition to train on.
 
         Returns:
-            verl's numbers for the update; none if the partition is empty.
+            verl's numbers for the update; none if there is not yet a
+            whole batch.
         """
         listed = tq.kv_list(partition_id=partition_id).get(partition_id, {})
         metrics: dict[str, float] = {}
-        if not listed:
+        keys = whole_batches(listed, self.batch_multiple())
+        if not keys:
             return metrics
         batch = KVBatchMeta(
             partition_id=partition_id,
-            keys=list(listed),
-            tags=list(listed.values()),
+            keys=keys,
+            tags=[listed[key] for key in keys],
         )
         temperature = self.config.actor_rollout_ref.rollout.temperature
         batch.extra_info["temperature"] = temperature
@@ -257,6 +263,22 @@ class PairTrainer(PPOTrainerSync):
         batch = self._update_actor(batch, metrics=metrics)
         tq.kv_clear(keys=batch.keys, partition_id=partition_id)
         return metrics
+
+    def batch_multiple(self) -> int:
+        """
+        Gives the batch size verl's update needs, as it computes it.
+
+        Returns:
+            The multiple of trajectories verl trains on without padding:
+            the actor's mini-batch, and a share for each data-parallel rank.
+        """
+        workers = self.actor_rollout_wg
+        if "actor" not in workers._dispatch_info:
+            workers._dispatch_info["actor"] = workers._query_dispatch_info(
+                "actor"
+            )
+        dp_size = max(workers._dispatch_info["actor"]) + 1
+        return self._get_required_batch_multiple(dp_size)
 
     def _compute_metrics(
         self,
