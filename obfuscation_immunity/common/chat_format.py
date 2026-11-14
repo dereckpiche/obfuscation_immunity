@@ -1,16 +1,20 @@
 """
 The model's own turn markers, and the one shape every turn must take.
 
-A model's turn is its thinking, the tag that closes it, the separator its
-chat template puts after that tag, its reply, and the token that ends its
-turn: nothing before, between or after. The markers differ by model, so
-each setup names them (`chat:` in configs/setup/):
+A model's turn is its thinking, one tag that closes it, a separator, its
+reply, and the token that ends its turn: nothing before, between or after.
+The markers differ by model, so each model family names them (`chat:` in
+configs/family/), each tag and separator it writes:
 
-    Qwen3.5          </think>, "\\n\\n", <|im_end|>
-    K2-Horizon       </ifm|think_faster>, " ", <|ifm|im_end|>
+    Qwen3.5          </think>                            "\\n\\n"
+                     <|im_end|>
+    K2-Horizon       </ifm|think_faster>, </ifm|think>   "", " "
+                     <|ifm|im_end|>
 
-The end of a turn is the chat template's, which is not always the
-tokenizer's end-of-text token.
+K2-Horizon closes with either of its tags (as a judge, with </ifm|think>
+though it opened with <ifm|think_faster>), and writes its reply right after
+the tag or after one space. The end of a turn is the chat template's, which
+is not always the tokenizer's end-of-text token.
 """
 
 from collections.abc import Callable, Mapping
@@ -30,36 +34,50 @@ REPLY_OUT_OF_FORMAT = "reply not in the format"
 """What is wrong with a turn whose reply is not exactly the format."""
 
 
+def as_tuple(value: str | list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    """
+    Reads a `chat:` entry that names one string or several.
+
+    Args:
+        value: One string, or a list of them.
+
+    Returns:
+        The strings.
+    """
+    return (value,) if isinstance(value, str) else tuple(value)
+
+
 @dataclass(frozen=True)
 class ChatFormat:
     """
-    A model's turn markers, as token ids, and its separator.
+    A model's turn markers, as token ids, and its separators.
 
     Attributes:
-        think_close_id: The token that closes the thinking.
+        think_close_ids: The tokens that may close the thinking.
         end_of_turn_id: The token that ends a turn.
-        separator: What the chat template writes between the closing tag
-            and the reply.
+        separators: What the model may write between the closing tag and
+            the reply, longest first.
         marker_ids: Every special or added token of the tokenizer: the
             chat template's markers, none of which may appear in a turn
-            but the closing tag, once, and the end of the turn, last.
+            but one closing tag, once, and the end of the turn, last.
         marker_texts: The same markers, as text, for the pair's page.
     """
 
-    think_close_id: int
+    think_close_ids: frozenset[int]
     end_of_turn_id: int
-    separator: str
+    separators: tuple[str, ...]
     marker_ids: frozenset[int]
     marker_texts: frozenset[str]
 
     @classmethod
     def build(cls, tokenizer: Any, chat: Mapping[str, Any]) -> "ChatFormat":
         """
-        Reads a setup's `chat:` markers from the run's tokenizer.
+        Reads a family's `chat:` markers from the run's tokenizer.
 
         Args:
             tokenizer: The run's tokenizer.
-            chat: The setup's `think_close`, `separator` and `end_of_turn`.
+            chat: The family's `think_close` and `separator` (each one or a
+                list) and `end_of_turn`.
 
         Returns:
             The format.
@@ -71,16 +89,35 @@ class ChatFormat:
         texts = {token.content for token in added.values()}
         texts |= set(tokenizer.all_special_tokens)
         ids = set(added) | set(tokenizer.all_special_ids)
-        marker = {}
-        for key in ("think_close", "end_of_turn"):
-            token_id = tokenizer.convert_tokens_to_ids(chat[key])
+
+        def marker_id(key: str, text: str) -> int:
+            """
+            Looks up one marker's token id.
+
+            Args:
+                key: The `chat:` entry it comes from.
+                text: The marker.
+
+            Returns:
+                Its token id.
+
+            Raises:
+                ValueError: If it is not a marker token of the tokenizer.
+            """
+            token_id = tokenizer.convert_tokens_to_ids(text)
             if token_id not in ids:
-                raise ValueError(f"{key} {chat[key]!r} is not a marker token")
-            marker[key] = token_id
+                raise ValueError(f"{key} {text!r} is not a marker token")
+            return token_id
+
+        closes = as_tuple(chat["think_close"])
         return cls(
-            think_close_id=marker["think_close"],
-            end_of_turn_id=marker["end_of_turn"],
-            separator=chat["separator"],
+            think_close_ids=frozenset(
+                marker_id("think_close", text) for text in closes
+            ),
+            end_of_turn_id=marker_id("end_of_turn", chat["end_of_turn"]),
+            separators=tuple(
+                sorted(as_tuple(chat["separator"]), key=len, reverse=True)
+            ),
             marker_ids=frozenset(ids),
             marker_texts=frozenset(texts),
         )
@@ -107,9 +144,25 @@ class ChatFormat:
         Returns:
             The position of the first closing tag; None if there is none.
         """
-        if self.think_close_id in token_ids:
-            return token_ids.index(self.think_close_id)
+        for position, token_id in enumerate(token_ids):
+            if token_id in self.think_close_ids:
+                return position
         return None
+
+    def without_separator(self, after: str) -> str:
+        """
+        Removes the separator the model wrote before its reply.
+
+        Args:
+            after: What the turn wrote after its closing tag.
+
+        Returns:
+            The text after the longest separator it starts with.
+        """
+        for separator in self.separators:
+            if after.startswith(separator):
+                return after[len(separator) :]
+        return after
 
     def split(self, tokenizer: Any, token_ids: list[int]) -> tuple[str, str]:
         """
@@ -132,10 +185,7 @@ class ChatFormat:
             body = body[:-1]
         thinking = tokenizer.decode(token_ids[:cut], skip_special_tokens=True)
         thinking = str(thinking).strip()
-        after = str(tokenizer.decode(body))
-        if after.startswith(self.separator):
-            after = after[len(self.separator) :]
-        return thinking, after
+        return thinking, self.without_separator(str(tokenizer.decode(body)))
 
     def problem(
         self,
@@ -147,9 +197,9 @@ class ChatFormat:
         Says what is wrong with a turn, if anything.
 
         The turn must be: thinking (no marker; empty is how chat templates
-        render a turn with no reasoning), the
-        closing tag, the separator, a reply with no space around it that
-        `reply_in_format` accepts, and the end of the turn.
+        render a turn with no reasoning), one closing tag, a separator, a
+        reply with no other space around it that `reply_in_format`
+        accepts, and the end of the turn.
 
         Args:
             tokenizer: The run's tokenizer.
@@ -168,9 +218,9 @@ class ChatFormat:
         if any(i in self.marker_ids for i in body[:cut] + body[cut + 1 :]):
             return STRAY_MARKER
         after = str(tokenizer.decode(body[cut + 1 :]))
-        if not after.startswith(self.separator):
+        if not any(after.startswith(s) for s in self.separators):
             return REPLY_OUT_OF_FORMAT
-        reply = after[len(self.separator) :]
+        reply = self.without_separator(after)
         if not reply or reply != reply.strip():
             return REPLY_OUT_OF_FORMAT
         if not reply_in_format(reply):

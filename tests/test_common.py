@@ -244,32 +244,39 @@ K2_WORDS = {
     3: "</ifm|think_faster>",
     5: "\\boxed{x}",
     6: "<|ifm|im_end|>",
+    7: "</ifm|think>",
     11: "\n\n",
     12: " ",
     13: "<|ifm|endoftext|>",
 }
-"""K2-Horizon's words: a space after the tag, and its own end of turn."""
+"""K2-Horizon's words: two closing tags, and its own end of turn."""
 
 
 def test_a_k2_turn_ends_on_its_own_marker_with_a_space_after_the_tag():
-    tokenizer = Tokenizer("a", K2_WORDS, {3, 6, 13})
+    tokenizer = Tokenizer("a", K2_WORDS, {3, 6, 7, 13})
     tokenizer.all_special_tokens = ["<|ifm|im_end|>", "<|ifm|endoftext|>"]
     chat = ChatFormat.build(
         tokenizer,
         {
-            "think_close": "</ifm|think_faster>",
-            "separator": " ",
+            "think_close": ["</ifm|think_faster>", "</ifm|think>"],
+            "separator": ["", " "],
             "end_of_turn": "<|ifm|im_end|>",
         },
     )
     check = loop_module.answer_in_format
+    assert chat.problem(tokenizer, [2, 3, 4, 6], check) == ""
+    assert chat.problem(tokenizer, [2, 7, 4, 6], check) == ""
+    assert chat.split(tokenizer, [2, 7, 12, 4, 6]) == ("think", "\\boxed{a}")
+    assert chat.problem(tokenizer, [2, 7, 4, 3, 6], check) == (
+        chat_format.STRAY_MARKER
+    )
     assert chat.problem(tokenizer, [2, 3, 12, 4, 6], check) == ""
     assert chat.problem(tokenizer, [3, 12, 4, 6], check) == ""
     assert chat.split(tokenizer, [2, 3, 12, 4, 6]) == ("think", "\\boxed{a}")
     assert chat.problem(tokenizer, [2, 3, 12, 4, 13], check) == (
         chat_format.OUT_OF_BUDGET
     )
-    for wrong in ([2, 3, 4, 6], [2, 3, 11, 4, 6], [2, 3, 12, 12, 4, 6]):
+    for wrong in ([2, 3, 11, 4, 6], [2, 3, 12, 12, 4, 6], [2, 3, 4, 12, 6]):
         assert chat.problem(tokenizer, wrong, check) == (
             chat_format.REPLY_OUT_OF_FORMAT
         )
@@ -612,7 +619,7 @@ def test_the_report_has_the_game_the_update_and_time_only():
         report_record([9], 1.0, {"a": 0.5}),
     ]
     verl = {"actor/grad_norm": 0.5, "timing_s/step": 120.0, "noise/x": 1.0}
-    report = progress.step_report(verl, records, 3)
+    report = progress.step_report(verl, records, frozenset({3}))
     assert set(report) == {"puzzles", "training", "time_and_memory"}
     puzzles = report["puzzles"]
     assert puzzles["a"] == pytest.approx(0.5) and puzzles["b"] == 2.0
