@@ -125,32 +125,29 @@ def means_by_name(found: list[dict[str, float]]) -> dict[str, float]:
     }
 
 
-def thinking_length(token_ids: list[int], think_ends: frozenset[int]) -> int:
+def thinking_length(token_ids: list[int], think_end: int) -> int:
     """
     Counts a generation's thinking tokens, its closing tag included.
 
     Args:
         token_ids: The generation.
-        think_ends: The ids of the tags that may close the thinking.
+        think_end: The id of the tag that closes the thinking.
 
     Returns:
-        The tokens up to the first such tag; all of them if it never closed.
+        The tokens up to that tag; all of them if it never closed.
     """
-    for position, token_id in enumerate(token_ids):
-        if token_id in think_ends:
-            return position + 1
+    if think_end in token_ids:
+        return token_ids.index(think_end) + 1
     return len(token_ids)
 
 
-def policy_token_counts(
-    record: PairRecord, think_ends: frozenset[int]
-) -> dict[str, float]:
+def policy_token_counts(record: PairRecord, think_end: int) -> dict[str, float]:
     """
     Counts the tokens the policy wrote, thought and read in one pair.
 
     Args:
         record: The pair's record.
-        think_ends: The ids of the tags that may close the thinking.
+        think_end: The id of the tag that closes the thinking.
 
     Returns:
         `tokens_written`, `tokens_thinking` and `tokens_read` (the puzzle).
@@ -159,7 +156,7 @@ def policy_token_counts(
     return {
         "tokens_written": float(sum(len(s.token_ids) for s in written)),
         "tokens_thinking": float(
-            sum(thinking_length(s.token_ids, think_ends) for s in written)
+            sum(thinking_length(s.token_ids, think_end) for s in written)
         ),
         "tokens_read": float(
             sum(
@@ -196,7 +193,7 @@ def groups_with_signal(records: list[PairRecord]) -> float:
 def step_report(
     verl_metrics: dict[str, float],
     records: list[PairRecord],
-    think_ends: frozenset[int],
+    think_end: int,
 ) -> dict[str, dict[str, float]]:
     """
     Gathers the step's numbers into the report's groups.
@@ -204,8 +201,8 @@ def step_report(
     Args:
         verl_metrics: verl's numbers for the step.
         records: The step's pairs.
-        think_ends: The ids of the tags that may close the thinking, to
-            count thinking tokens.
+        think_end: The id of the tag that closes the thinking, to count
+            thinking tokens.
 
     Returns:
         The numbers by group; a group with nothing to report is left out.
@@ -215,7 +212,7 @@ def step_report(
         puzzles = {"reward": mean([r.reward for r in records])}
         puzzles |= means_by_name([r.metrics for r in records])
         puzzles |= means_by_name(
-            [policy_token_counts(r, think_ends) for r in records]
+            [policy_token_counts(r, think_end) for r in records]
         )
         report["puzzles"] = puzzles
     training = {
@@ -328,7 +325,7 @@ class Progress:
             tokenizer: The run's tokenizer, to render the pair's page.
         """
         chat = ChatFormat.build(tokenizer, self.chat_markers)
-        report = step_report(verl_metrics, records, chat.think_close_ids)
+        report = step_report(verl_metrics, records, chat.think_close_id)
         for line in console_lines(step, report):
             print(line, flush=True)
         logged: dict[str, object] = {

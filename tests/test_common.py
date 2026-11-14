@@ -239,49 +239,6 @@ def test_a_turn_is_thinking_tag_separator_reply_end_and_nothing_else(
     assert found == problem
 
 
-K2_WORDS = {
-    2: "think ",
-    3: "</ifm|think_faster>",
-    5: "\\boxed{x}",
-    6: "<|ifm|im_end|>",
-    7: "</ifm|think>",
-    11: "\n\n",
-    12: " ",
-    13: "<|ifm|endoftext|>",
-}
-"""K2-Horizon's words: two closing tags, and its own end of turn."""
-
-
-def test_a_k2_turn_ends_on_its_own_marker_with_a_space_after_the_tag():
-    tokenizer = Tokenizer("a", K2_WORDS, {3, 6, 7, 13})
-    tokenizer.all_special_tokens = ["<|ifm|im_end|>", "<|ifm|endoftext|>"]
-    chat = ChatFormat.build(
-        tokenizer,
-        {
-            "think_close": ["</ifm|think_faster>", "</ifm|think>"],
-            "separator": ["", " "],
-            "end_of_turn": "<|ifm|im_end|>",
-        },
-    )
-    check = loop_module.answer_in_format
-    assert chat.problem(tokenizer, [2, 3, 4, 6], check) == ""
-    assert chat.problem(tokenizer, [2, 7, 4, 6], check) == ""
-    assert chat.split(tokenizer, [2, 7, 12, 4, 6]) == ("think", "\\boxed{a}")
-    assert chat.problem(tokenizer, [2, 7, 4, 3, 6], check) == (
-        chat_format.STRAY_MARKER
-    )
-    assert chat.problem(tokenizer, [2, 3, 12, 4, 6], check) == ""
-    assert chat.problem(tokenizer, [3, 12, 4, 6], check) == ""
-    assert chat.split(tokenizer, [2, 3, 12, 4, 6]) == ("think", "\\boxed{a}")
-    assert chat.problem(tokenizer, [2, 3, 12, 4, 13], check) == (
-        chat_format.OUT_OF_BUDGET
-    )
-    for wrong in ([2, 3, 11, 4, 6], [2, 3, 12, 12, 4, 6], [2, 3, 4, 12, 6]):
-        assert chat.problem(tokenizer, wrong, check) == (
-            chat_format.REPLY_OUT_OF_FORMAT
-        )
-
-
 def test_a_marker_the_tokenizer_lacks_fails_at_the_start():
     with pytest.raises(ValueError, match="think_close"):
         ChatFormat.build(Tokenizer("a"), {**QWEN_CHAT, "think_close": "</t>"})
@@ -619,7 +576,7 @@ def test_the_report_has_the_game_the_update_and_time_only():
         report_record([9], 1.0, {"a": 0.5}),
     ]
     verl = {"actor/grad_norm": 0.5, "timing_s/step": 120.0, "noise/x": 1.0}
-    report = progress.step_report(verl, records, frozenset({3}))
+    report = progress.step_report(verl, records, 3)
     assert set(report) == {"puzzles", "training", "time_and_memory"}
     puzzles = report["puzzles"]
     assert puzzles["a"] == pytest.approx(0.5) and puzzles["b"] == 2.0
@@ -661,29 +618,3 @@ def test_the_judge_trains_on_whole_batches_oldest_first():
     assert whole_batches(listed, 7) == sorted(
         listed, key=lambda k: listed[k]["global_steps"]
     )
-
-
-def test_vllm_keeps_grouped_rms_norms_and_swaps_the_others(monkeypatch):
-    import sys
-    from types import ModuleType
-
-    from obfuscation_immunity import vllm_plugin
-
-    backend = {}
-    for name in ("vllm", "vllm.model_executor", "vllm.model_executor.models"):
-        monkeypatch.setitem(sys.modules, name, ModuleType(name))
-    for name in vllm_plugin.BACKEND_MODULES:
-        module = ModuleType(name)
-        module.replace_rms_norm_class = lambda rms_norm, size: "vllm's"
-        backend[name] = module
-        monkeypatch.setitem(sys.modules, name, module)
-    package = ModuleType("vllm.model_executor.models.transformers")
-    package.utils = backend[vllm_plugin.BACKEND_MODULES[0]]
-    monkeypatch.setitem(sys.modules, package.__name__, package)
-    vllm_plugin.keep_grouped_rms_norms()
-    vllm_plugin.keep_grouped_rms_norms()
-    grouped, plain = SimpleNamespace(n_groups=2), SimpleNamespace(n_groups=1)
-    for module in backend.values():
-        assert module.replace_rms_norm_class(grouped, 8) is grouped
-        assert module.replace_rms_norm_class(plain, 8) == "vllm's"
-        assert module.replace_rms_norm_class(SimpleNamespace(), 8) == "vllm's"

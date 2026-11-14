@@ -1,8 +1,0 @@
-# @package _global_
-# K2-Horizon-3.7B, a whole replica on each GPU (an L40S-48GB or more).
-defaults:
-  - /family/k2-horizon@_global_
-
-actor_rollout_ref:
-  model:
-    path: IFM/K2-Horizon-3.7B

@@ -55,9 +55,8 @@ the recipe, every setting that matters written out even where it equals
 verl's default; `configs/judge/` holds each judge's arguments, checked at the
 start against its typed `Config` dataclass, and what it changes in verl;
 `configs/model/` holds the models, each from a model family in
-`configs/family/`: its chat markers and how it is asked to think. Qwen3.5
-(thinking on) and K2-Horizon (`reasoning_effort: low`) take the same code.
-Every GPU of the job trains, as many as Slurm gives it. Any key
+`configs/family/`: its chat markers and how it is asked to think. Every GPU
+of the job trains, as many as Slurm gives it. Any key
 is a command-line override (`trainer.save_freq=20`). A run writes its puzzles
 on first use. `Probe` first needs `python -m obfuscation_immunity.probe.fit
 <sae>`. Each step prints a few lines and logs the same to wandb (project

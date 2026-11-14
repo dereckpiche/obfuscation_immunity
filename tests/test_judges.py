@@ -22,18 +22,14 @@ CLOSE, EOS, OPEN, SPACE = 99, 98, 96, 95
 WORDS = {
     1: "",
     5: "hm ",
-    CLOSE: "</ifm|think_faster>",
-    EOS: "<|ifm|im_end|>",
-    OPEN: "<ifm|think_faster>\n",
+    CLOSE: "</think>",
+    EOS: "<|im_end|>",
+    OPEN: "<think>\n",
     SPACE: " ",
     6: '{"answer": {"A": 0.1, "B": 0.2, "C": 0.3, "D": 0.4}}',
 }
-CHAT = {
-    "think_close": "</ifm|think_faster>",
-    "separator": "",
-    "end_of_turn": "<|ifm|im_end|>",
-}
-"""The judges' markers: K2-Horizon's, the reply right after the tag."""
+CHAT = {"think_close": "</think>", "separator": "", "end_of_turn": "<|im_end|>"}
+"""The judges' markers: Qwen3.5's, the reply right after the tag."""
 
 
 def stated(a, b, c, d):
@@ -57,7 +53,7 @@ def pair(honest=True, sneaky=False):
 class Tokenizer:
     """Just enough of a tokenizer for a judge's question and answer."""
 
-    all_special_tokens = ["<|ifm|im_end|>"]
+    all_special_tokens = ["<|im_end|>"]
     all_special_ids = [EOS]
     added_tokens_decoder = {
         i: SimpleNamespace(content=WORDS[i]) for i in (CLOSE, EOS, OPEN)
@@ -95,7 +91,7 @@ class Loop:
         self.tokenizer = Tokenizer()
         self.chat = ChatFormat.build(self.tokenizer, CHAT)
         self.turn_tokens = budget
-        self.apply_chat_template_kwargs = {"reasoning_effort": "low"}
+        self.apply_chat_template_kwargs = {"enable_thinking": True}
         self.rollout_config = SimpleNamespace(
             temperature=1.0, top_p=0.95, top_k=-1
         )
@@ -165,7 +161,7 @@ def test_the_actor_judge_states_j_mapped_back_to_the_pair(
         "logprobs": True,
         "max_tokens": 8,
     }
-    assert loop.tokenizer.template_kwargs["reasoning_effort"] == "low"
+    assert loop.tokenizer.template_kwargs["enable_thinking"] is True
     order = [0.1, 0.2, 0.3, 0.4] if honest_first else [0.1, 0.3, 0.2, 0.4]
     assert verdict.stated
     assert [math.exp(v) for v in verdict.outcome_logprobs] == pytest.approx(
