@@ -7,7 +7,7 @@ turn: nothing before, between or after. The markers differ by model, so
 each setup names them (`chat:` in configs/setup/):
 
     Qwen3.5          </think>, "\\n\\n", <|im_end|>
-    K2-Horizon       </ifm|think_faster>, "", <|ifm|im_end|>
+    K2-Horizon       </ifm|think_faster>, " ", <|ifm|im_end|>
 
 The end of a turn is the chat template's, which is not always the
 tokenizer's end-of-text token.
@@ -22,9 +22,6 @@ OUT_OF_BUDGET = "out of budget"
 
 UNCLOSED_THINKING = "never closed its thinking"
 """What is wrong with a turn that ended without closing its thinking."""
-
-NO_THINKING = "did not think"
-"""What is wrong with a turn that closed its thinking at once."""
 
 STRAY_MARKER = "a stray marker"
 """What is wrong with a turn that wrote a marker anywhere else."""
@@ -149,7 +146,8 @@ class ChatFormat:
         """
         Says what is wrong with a turn, if anything.
 
-        The turn must be: thinking (at least one token, no marker), the
+        The turn must be: thinking (no marker; empty is how chat templates
+        render a turn with no reasoning), the
         closing tag, the separator, a reply with no space around it that
         `reply_in_format` accepts, and the end of the turn.
 
@@ -167,8 +165,6 @@ class ChatFormat:
         cut = self.think_close_position(body)
         if cut is None:
             return UNCLOSED_THINKING
-        if cut == 0:
-            return NO_THINKING
         if any(i in self.marker_ids for i in body[:cut] + body[cut + 1 :]):
             return STRAY_MARKER
         after = str(tokenizer.decode(body[cut + 1 :]))

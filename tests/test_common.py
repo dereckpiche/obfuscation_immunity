@@ -215,7 +215,7 @@ WRONG = [2, 3, 11, 5, 6]
         ([2, 3, 11, 4], chat_format.OUT_OF_BUDGET),
         ([2, 2], chat_format.OUT_OF_BUDGET),
         ([2, 11, 4, 6], chat_format.UNCLOSED_THINKING),
-        ([3, 11, 4, 6], chat_format.NO_THINKING),
+        ([3, 11, 4, 6], ""),
         ([9, 2, 3, 11, 4, 6], chat_format.STRAY_MARKER),
         ([2, 3, 11, 4, 3, 6], chat_format.STRAY_MARKER),
         ([2, 3, 11, 4, 13, 6], chat_format.STRAY_MARKER),
@@ -245,31 +245,34 @@ K2_WORDS = {
     5: "\\boxed{x}",
     6: "<|ifm|im_end|>",
     11: "\n\n",
+    12: " ",
     13: "<|ifm|endoftext|>",
 }
-"""K2-Horizon's words: no separator, and its own end of turn."""
+"""K2-Horizon's words: a space after the tag, and its own end of turn."""
 
 
-def test_a_k2_turn_ends_on_its_own_marker_with_the_reply_right_after_tag():
+def test_a_k2_turn_ends_on_its_own_marker_with_a_space_after_the_tag():
     tokenizer = Tokenizer("a", K2_WORDS, {3, 6, 13})
     tokenizer.all_special_tokens = ["<|ifm|im_end|>", "<|ifm|endoftext|>"]
     chat = ChatFormat.build(
         tokenizer,
         {
             "think_close": "</ifm|think_faster>",
-            "separator": "",
+            "separator": " ",
             "end_of_turn": "<|ifm|im_end|>",
         },
     )
     check = loop_module.answer_in_format
-    assert chat.problem(tokenizer, [2, 3, 4, 6], check) == ""
-    assert chat.split(tokenizer, [2, 3, 4, 6]) == ("think", "\\boxed{a}")
-    assert chat.problem(tokenizer, [2, 3, 4, 13], check) == (
+    assert chat.problem(tokenizer, [2, 3, 12, 4, 6], check) == ""
+    assert chat.problem(tokenizer, [3, 12, 4, 6], check) == ""
+    assert chat.split(tokenizer, [2, 3, 12, 4, 6]) == ("think", "\\boxed{a}")
+    assert chat.problem(tokenizer, [2, 3, 12, 4, 13], check) == (
         chat_format.OUT_OF_BUDGET
     )
-    assert chat.problem(tokenizer, [2, 3, 11, 4, 6], check) == (
-        chat_format.REPLY_OUT_OF_FORMAT
-    )
+    for wrong in ([2, 3, 4, 6], [2, 3, 11, 4, 6], [2, 3, 12, 12, 4, 6]):
+        assert chat.problem(tokenizer, wrong, check) == (
+            chat_format.REPLY_OUT_OF_FORMAT
+        )
 
 
 def test_a_marker_the_tokenizer_lacks_fails_at_the_start():

@@ -1,12 +1,12 @@
 # @package _global_
 # K2-Horizon's chat at low reasoning effort: thinking opened by the template
-# with <ifm|think_faster>, closed by </ifm|think_faster>, the reply right
-# after it, a turn ended by <|ifm|im_end|>, not its end-of-text token
+# with <ifm|think_faster>, closed by </ifm|think_faster>, a space, the reply,
+# a turn ended by <|ifm|im_end|>, not its end-of-text token
 # (common.chat_format). Its own model code (trust_remote_code); vLLM runs it
 # through its Transformers backend. Sampling as its card recommends.
 chat:
   think_close: </ifm|think_faster>
-  separator: ""
+  separator: " "                 # what it writes after the tag
   end_of_turn: <|ifm|im_end|>
 
 data:
@@ -18,3 +18,10 @@ actor_rollout_ref:
     trust_remote_code: true
   rollout:
     top_p: 0.95
+
+algorithm:
+  rollout_correction:
+    # vLLM runs it through its Transformers backend, whose log-probabilities
+    # part from the trainer's by ~0.03 per token (Qwen's native: 0.0004): at
+    # ±1% nearly every pair would be dropped; the token weights still correct.
+    rollout_rs_threshold: "0.9_1.1"
