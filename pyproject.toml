@@ -22,6 +22,9 @@ dependencies = [
     "torchao; sys_platform == 'linux'",
 ]
 
+[project.entry-points."vllm.general_plugins"]
+keep_grouped_rms_norms = "obfuscation_immunity.vllm_plugin:keep_grouped_rms_norms"
+
 [dependency-groups]
 dev = [
     "black>=26.5.1",

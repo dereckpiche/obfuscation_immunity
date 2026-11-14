@@ -651,3 +651,29 @@ def test_the_judge_trains_on_whole_batches_oldest_first():
     assert whole_batches(listed, 7) == sorted(
         listed, key=lambda k: listed[k]["global_steps"]
     )
+
+
+def test_vllm_keeps_grouped_rms_norms_and_swaps_the_others(monkeypatch):
+    import sys
+    from types import ModuleType
+
+    from obfuscation_immunity import vllm_plugin
+
+    backend = {}
+    for name in ("vllm", "vllm.model_executor", "vllm.model_executor.models"):
+        monkeypatch.setitem(sys.modules, name, ModuleType(name))
+    for name in vllm_plugin.BACKEND_MODULES:
+        module = ModuleType(name)
+        module.replace_rms_norm_class = lambda rms_norm, size: "vllm's"
+        backend[name] = module
+        monkeypatch.setitem(sys.modules, name, module)
+    package = ModuleType("vllm.model_executor.models.transformers")
+    package.utils = backend[vllm_plugin.BACKEND_MODULES[0]]
+    monkeypatch.setitem(sys.modules, package.__name__, package)
+    vllm_plugin.keep_grouped_rms_norms()
+    vllm_plugin.keep_grouped_rms_norms()
+    grouped, plain = SimpleNamespace(n_groups=2), SimpleNamespace(n_groups=1)
+    for module in backend.values():
+        assert module.replace_rms_norm_class(grouped, 8) is grouped
+        assert module.replace_rms_norm_class(plain, 8) == "vllm's"
+        assert module.replace_rms_norm_class(SimpleNamespace(), 8) == "vllm's"
